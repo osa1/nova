@@ -7,7 +7,7 @@ import System.FilePath (takeExtension, (</>))
 import Test.Tasty
 import Test.Tasty.HUnit
 ----------------------------------------------------------------------------------------------------
-import qualified Language.Nova.Lexer as L
+import qualified Language.Nova.Parser as P
 ----------------------------------------------------------------------------------------------------
 
 testPgmRoot :: FilePath
@@ -21,10 +21,10 @@ main = do
 
 all_tests :: [FilePath] -> [TestTree]
 all_tests nv_files =
-    [ testGroup "Lexer" (lexer_tests nv_files) ]
+    [ testGroup "Parser" (parser_tests nv_files) ]
 
-lexer_tests :: [FilePath] -> [TestTree]
-lexer_tests nv_files =
+parser_tests :: [FilePath] -> [TestTree]
+parser_tests nv_files =
     flip map nv_files $ \f -> testCase f $ do
       str <- readFile (testPgmRoot </> f)
-      assertBool "lex result" (isRight (L.lex str))
+      assertBool "parse result" (isRight (P.runParser P.parseModule str))
