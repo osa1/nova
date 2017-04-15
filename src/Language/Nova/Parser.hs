@@ -58,7 +58,11 @@ assertIndentation rel = do
 -- * AST
 
 data Decl
-  = FunDecl Ident [(Ident, Type)] Type [Stmt]
+  = FunD FunDecl
+  | IncludeD T.Text
+  deriving (Show)
+
+data FunDecl = FunDecl Ident [(Ident, Type)] Type [Stmt]
   deriving (Show)
 
 data Type
@@ -68,12 +72,10 @@ data Type
 
 data Stmt
   = FunCallS FunCall
-  | VarDeclS Ident Type Expr
   deriving (Show)
 
 data Expr
   = FunCallE FunCall
-  | NumberE  Number
   | StringE  T.Text
   | IdentE Ident
   deriving (Show)
@@ -97,7 +99,16 @@ parseType = do
         return (TypeApp ty1 tys)
 
 parseDecl :: Parser Decl
-parseDecl = do
+parseDecl = choice
+    [ parseInclude
+    , FunD <$> parseFunDecl
+    ]
+
+parseInclude :: Parser Decl
+parseInclude = IncludeD <$> (token_ Include >> stringLit)
+
+parseFunDecl :: Parser FunDecl
+parseFunDecl = do
     token_ Fn
     f_name <- ident
     token_ LParen

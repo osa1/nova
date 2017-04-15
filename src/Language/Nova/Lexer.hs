@@ -28,6 +28,7 @@ data Tok
   | Equal
   | Fn
   | Id Ident
+  | Include
   | LAngle
   | LBrace
   | LBrack
@@ -107,6 +108,7 @@ lexOne =
       , charL '+' Add
       , charL '-' Sub
       , charL '^' XOr
+      , stringL "include" Include
       , fmap Id <$> lexIdent
       ]
     <* skipTrailing

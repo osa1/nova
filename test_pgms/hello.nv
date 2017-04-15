@@ -1,3 +1,5 @@
+include "stdio.h"
+
 # This is a comment
 fn hello(): void =
     printf("Hello, world!\n")
