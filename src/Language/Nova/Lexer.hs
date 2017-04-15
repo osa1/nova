@@ -6,9 +6,14 @@ module Language.Nova.Lexer where
 import Data.Functor
 import qualified Data.Text as T
 import Prelude hiding (lex)
+import Data.List (intercalate)
 import Text.Megaparsec as P
+import qualified Data.List.NonEmpty as NE
 import Text.Megaparsec.String as P
 ----------------------------------------------------------------------------------------------------
+
+newtype Ident = Ident { identText :: T.Text }
+  deriving (Show, Eq, Ord)
 
 data Tok
   = Add
@@ -21,7 +26,8 @@ data Tok
   | Div
   | Dot
   | Equal
-  | Id T.Text
+  | Fn
+  | Id Ident
   | LAngle
   | LBrace
   | LBrack
@@ -40,13 +46,21 @@ data Tok
   | StringLit T.Text
   | Sub
   | XOr
-  deriving (Show)
+  deriving (Show, Eq, Ord)
 
 data Loc a = L SourcePos a SourcePos
-  deriving (Show, Functor)
+  deriving (Show, Functor, Eq, Ord)
+
+instance Show a => ShowToken (Loc a) where
+  showTokens ts = intercalate "," (map showL (NE.toList ts))
+    where
+      showL (L (SourcePos _ l c) p _) = show p ++ "(" ++ show (unPos l) ++ "," ++ show (unPos c) ++ ")"
+
+unLoc :: Loc a -> a
+unLoc (L _ a _) = a
 
 data Number = Number T.Text (Maybe NumType)
-  deriving (Show)
+  deriving (Show, Eq, Ord)
 
 data NumType
   -- Signed
@@ -55,7 +69,7 @@ data NumType
   | U8 | U16 | U32 | U64
   -- Float
   | F32 | F64
-  deriving (Show)
+  deriving (Show, Eq, Ord)
 
 lex :: String -> Either (ParseError Char Dec) [Loc Tok]
 lex = parse (skipTrailing >> many lexOne <* eof) ""
@@ -68,10 +82,11 @@ lexOne =
       , fmap Num <$> lexNumber
       , stringL "&&" And
       , stringL "||" Or
-      , stringL ">>" ShiftR
+      -- , stringL ">>" ShiftR -- confuses template param parser
       , stringL "<<" ShiftL
       , stringL "==" Equal
       , stringL "/=" NotEqual
+      , stringL "fn" Fn
       , charL ':' Colon
       , charL '(' LParen
       , charL ')' RParen
@@ -157,13 +172,13 @@ lexNumType = choice
     , string "f64" $> F64
     ]
 
-lexIdent :: Parser (Loc T.Text)
+lexIdent :: Parser (Loc Ident)
 lexIdent = do
     p1 <- getPosition
     c1 <- firstChar
     cs <- many idChar
     p2 <- getPosition
-    return (L p1 (T.pack (c1 : cs)) p2)
+    return (L p1 (Ident (T.pack (c1 : cs))) p2)
   where
     firstChar = oneOf ['a' .. 'z'] <|> oneOf ['A' .. 'Z'] <|> char '_'
     idChar = firstChar <|> digitChar

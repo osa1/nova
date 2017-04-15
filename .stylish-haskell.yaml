@@ -185,15 +185,16 @@ newline: native
 #
 # No language extensions are enabled by default.
 language_extensions:
-  - MultiParamTypeClasses
-  - TemplateHaskell
-  - QuasiQuotes
-  - FlexibleInstances
-  - FlexibleContexts
-  - GADTs
   - DataKinds
-  - TypeOperators
-  - TypeFamilies
   - EmptyCase
   - ExistentialQuantification
+  - FlexibleContexts
+  - FlexibleInstances
+  - GADTs
+  - LambdaCase
+  - MultiParamTypeClasses
   - PolyKinds
+  - QuasiQuotes
+  - TemplateHaskell
+  - TypeFamilies
+  - TypeOperators
