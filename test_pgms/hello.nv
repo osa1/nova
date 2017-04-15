@@ -1,5 +1,7 @@
+# This is a comment
 fn hello(): void =
   printf("Hello, world!\n")
 
+# Entry point
 fn main():
-  hello()
+  hello() # prints "Hello, world!"
