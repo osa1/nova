@@ -5,6 +5,7 @@ module Language.Nova.Parser where
 ----------------------------------------------------------------------------------------------------
 import Control.Monad
 import Control.Monad.State
+import Data.Functor
 import Data.List
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty as NE
@@ -72,84 +73,229 @@ data Type
 
 data Stmt
   = FunCallS FunCall
+  | IfS Expr -- cond
+        [Stmt] -- body
+        [(Expr, [Stmt])] -- elseif blocks
+        (Maybe [Stmt]) -- else block
+  | ReturnS (Maybe Expr)
   deriving (Show)
 
 data Expr
   = FunCallE FunCall
-  | StringE  T.Text
+  | StringE T.Text
   | IdentE Ident
+  | NumberE Number
+  | SelectE Expr Ident
+  | IndexE Expr Expr
+  | Unop Unop Expr
+  | Binop Binop Expr Expr
   deriving (Show)
 
 data FunCall = FunCall Expr [Expr]
   deriving (Show)
 
+data Unop
+  = Neg
+  | Not
+  | AddrOf
+  | Deref
+  deriving (Show)
+
+unopPrec :: Unop -> Word
+unopPrec Neg    = 100
+unopPrec Not    = 100
+unopPrec AddrOf = 100
+unopPrec Deref  = 100
+
+data Binop
+  = Add
+  | Sub
+  | Mul
+  | Div
+  | Rem
+  deriving (Show)
+
+binopPrec :: Binop -> (Word, Word)
+binopPrec Add = (50, 60)
+binopPrec Sub = (50, 60)
+binopPrec Mul = (80, 70)
+binopPrec Div = (80, 70)
+binopPrec Rem = (80, 70)
+
 ----------------------------------------------------------------------------------------------------
 
-parseModule :: Parser [Decl]
-parseModule = many (assertIndentation (==) >> parseDecl) <* eof
+decls :: Parser [Decl]
+decls = many (assertIndentation (==) >> decl) <* eof
 
-parseType :: Parser Type
-parseType = do
+type_ :: Parser Type
+type_ = do
     ty1 <- ident
     optional (token LAngle) >>= \case
       Nothing -> return (Type ty1)
       Just _  -> do
-        tys <- sepBy parseType (token Comma)
+        tys <- sepBy type_ (token Comma)
         token_ RAngle
         return (TypeApp ty1 tys)
 
-parseDecl :: Parser Decl
-parseDecl = choice
-    [ parseInclude
-    , FunD <$> parseFunDecl
+decl :: Parser Decl
+decl = choice
+    [ include
+    , FunD <$> funDecl
     ]
 
-parseInclude :: Parser Decl
-parseInclude = IncludeD <$> (token_ Include >> stringLit)
+include :: Parser Decl
+include = IncludeD <$> (token_ Include >> stringLit)
 
-parseFunDecl :: Parser FunDecl
-parseFunDecl = do
+funDecl :: Parser FunDecl
+funDecl = do
     token_ Fn
     f_name <- ident
     token_ LParen
-    params <- parseParams
+    ps <- params
     token_ RParen
     token_ Colon
-    ret_ty <- parseType
+    ret_ty <- type_
     token_ Assign
     assertIndentation (>)
     pushNextIndentation
-    stmts <- many (assertIndentation (==) >> parseStmt)
+    stmts <- many (assertIndentation (==) >> stmt)
     _ <- popIndentation
-    return (FunDecl f_name params ret_ty stmts)
+    return (FunDecl f_name ps ret_ty stmts)
 
-parseParams :: Parser [(Ident, Type)]
-parseParams = param `sepBy` token Comma
+params :: Parser [(Ident, Type)]
+params = param `sepBy` token Comma
   where
     param = do
       i <- ident
       token_ Colon
-      ty <- parseType
+      ty <- type_
       return (i, ty)
 
-parseStmt :: Parser Stmt
-parseStmt = choice
-    [ FunCallS <$> parseFunCall ]
+stmt :: Parser Stmt
+stmt = choice
+    [ FunCallS <$> funCall
+    , ReturnS <$> (token_ Return >> optional (assertIndentation (>) >> expr))
+    , ifStmt
+    ]
 
-parseFunCall :: Parser FunCall
-parseFunCall = do
-    fn <- expr
-    token_ LParen
-    args <- expr `sepBy` token Comma
-    token_ RParen
-    return (FunCall fn args)
+ifStmt :: Parser Stmt
+ifStmt = do
+    token_ If
+    cond <- expr
+    token_ Colon
+    assertIndentation (>)
+    pushNextIndentation
+    stmts <- many (assertIndentation (==) >> stmt)
+    _ <- popIndentation
+    elseifs <- many elseif
+    else_ <- optional else_block
+    return (IfS cond stmts elseifs else_)
+  where
+    elseif :: Parser (Expr, [Stmt])
+    elseif = do
+      token_ ElseIf
+      cond <- expr
+      token_ Colon
+      assertIndentation (>)
+      pushNextIndentation
+      stmts <- many (assertIndentation (==) >> stmt)
+      _ <- popIndentation
+      return (cond, stmts)
+
+    else_block :: Parser [Stmt]
+    else_block = do
+      token_ Else
+      token_ Colon
+      assertIndentation (>)
+      pushNextIndentation
+      stmts <- many (assertIndentation (==) >> stmt)
+      _ <- popIndentation
+      return stmts
+
+funCall :: Parser FunCall
+funCall = expr >>= \case
+    FunCallE funcall -> return funcall
+    err -> fail ("unexpected " ++ show err)
 
 expr :: Parser Expr
-expr =
-    -- FIXME only parses identifiers and strings for now, no function calls
+expr = fst <$> expr_prec 0
+
+expr_prec :: Word -> Parser (Expr, Maybe Binop)
+expr_prec limit0 = do
+    (e1, bop) <- optional unop >>= \case
+                   Nothing -> (, Nothing) <$> simple_expr
+                   Just op -> do
+                     (e1, bop) <- expr_prec (unopPrec op)
+                     return (Unop op e1, bop)
+    maybe (optional binop) (return . Just) bop >>= loop limit0 e1
+  where
+    loop :: Word -> Expr -> Maybe Binop -> Parser (Expr, Maybe Binop)
+    loop _ e1 Nothing = return (e1, Nothing)
+    loop cur_prec e1 (Just bop)
+      | fst (binopPrec bop) > cur_prec = do
+          (e2, nextOp) <- expr_prec (snd (binopPrec bop))
+          loop cur_prec (Binop bop e1 e2) nextOp
+      | otherwise = return (e1, Just bop)
+
+simple_expr :: Parser Expr
+simple_expr =
     choice [ StringE <$> stringLit
-           , IdentE <$> ident
+           , NumberE <$> numberLit
+           , suffixExpToExp <$> suffixExp
            ]
+
+data ExpSuffix
+  = SFunCall [Expr]
+  | SIndex   Expr
+  | SSelect  Ident
+
+data PrimaryExp
+  = PIdent Ident
+  | PParen Expr
+
+data SuffixExp
+  = SuffixExp PrimaryExp [ExpSuffix]
+
+suffixExpToExp :: SuffixExp -> Expr
+suffixExpToExp (SuffixExp pe ss) = foldl' foldSE (primaryExpToExpr pe) ss
+  where
+    foldSE :: Expr -> ExpSuffix -> Expr
+    foldSE e (SFunCall args) = FunCallE (FunCall e args)
+    foldSE e (SIndex e')     = IndexE e e'
+    foldSE e (SSelect i)     = SelectE e i
+
+    primaryExpToExpr (PIdent i) = IdentE i
+    primaryExpToExpr (PParen e) = e
+
+suffix :: Parser ExpSuffix
+suffix = choice [ SFunCall <$> call, SIndex <$> index, SSelect <$> select ]
+  where
+    call   = between (token_ LParen) (token_ RParen) (expr `sepBy` token_ Comma)
+    index  = between (token_ LBrack) (token_ RBrack) expr
+    select = token_ Dot >> ident
+
+suffixExp :: Parser SuffixExp
+suffixExp = SuffixExp <$> primaryExp <*> many suffix
+
+primaryExp :: Parser PrimaryExp
+primaryExp = PIdent <$> ident <|> PParen <$> between (token_ LParen) (token_ RParen) expr
+
+unop :: Parser Unop
+unop = choice [ token Dash $> Neg
+              , token Bang $> Not
+              , token Ampers $> AddrOf
+              , token Star $> Deref
+              ]
+
+binop :: Parser Binop
+binop = choice [ token Plus $> Add
+               , token Dash $> Sub
+               , token Star $> Mul
+               , token Slash $> Div
+               , token Percent $> Rem
+               ]
+
+----------------------------------------------------------------------------------------------------
 
 token :: Tok -> Parser (Loc Tok)
 token t = P.token testTok Nothing
@@ -166,10 +312,16 @@ ident :: Parser Ident
 ident = P.token testTok Nothing
   where
     testTok (L _ (Id i) _) = Right i
-    testTok x = Left (S.singleton (Tokens (x:|[])), S.empty, S.empty)
+    testTok x = Left (S.singleton (Tokens (x :| [])), S.empty, S.empty)
 
 stringLit :: Parser T.Text
 stringLit = P.token testTok Nothing
   where
     testTok (L _ (StringLit str) _) = Right str
     testTok x = Left (S.singleton (Tokens (x:|[])), S.empty, S.empty)
+
+numberLit :: Parser Number
+numberLit = P.token testTok Nothing
+  where
+    testTok (L _ (Num n) _) = Right n
+    testTok x = Left (S.singleton (Tokens (x :| [])), S.empty, S.empty)

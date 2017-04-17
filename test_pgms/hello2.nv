@@ -1,0 +1,17 @@
+include "stdbool.h"
+include "stdio.h"
+
+fn cond_1(b: bool): void =
+    if b:
+      printf("1\n")
+
+fn cond_2(b: bool): void =
+    if !b:
+      return
+    printf("2\n")
+
+fn main(): void =
+    cond_1(true)
+    cond_1(false)
+    cond_2(true)
+    cond_2(false)

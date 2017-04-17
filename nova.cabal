@@ -35,6 +35,7 @@ library
     FlexibleInstances
     LambdaCase
     OverloadedStrings
+    TupleSections
     TypeFamilies
   ghc-options:         -Wall
 

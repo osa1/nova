@@ -16,18 +16,21 @@ newtype Ident = Ident { identText :: T.Text }
   deriving (Show, Eq, Ord)
 
 data Tok
-  = Add
-  | Ampers
+  = Ampers
   | And
   | Assign
+  | Bang
   | BOr
   | Colon
   | Comma
-  | Div
+  | Dash
   | Dot
+  | Else
+  | ElseIf
   | Equal
   | Fn
   | Id Ident
+  | If
   | Include
   | LAngle
   | LBrace
@@ -36,16 +39,18 @@ data Tok
   | NotEqual
   | Num Number
   | Or
+  | Percent
+  | Plus
   | RAngle
   | RBrace
   | RBrack
-  | Rem
+  | Return
   | RParen
   | ShiftL
   | ShiftR
+  | Slash
   | Star
   | StringLit T.Text
-  | Sub
   | XOr
   deriving (Show, Eq, Ord)
 
@@ -81,6 +86,10 @@ lexOne =
     choice
       [ fmap StringLit <$> lexString
       , fmap Num <$> lexNumber
+      , stringL "return" Return
+      , stringL "if" If
+      , stringL "elseif" ElseIf
+      , stringL "else" Else
       , stringL "&&" And
       , stringL "||" Or
       -- , stringL ">>" ShiftR -- confuses template param parser
@@ -103,11 +112,12 @@ lexOne =
       , charL '.' Dot
       , charL ',' Comma
       , charL '*' Star
-      , charL '/' Div
-      , charL '%' Rem
-      , charL '+' Add
-      , charL '-' Sub
+      , charL '/' Slash
+      , charL '%' Percent
+      , charL '+' Plus
+      , charL '-' Dash
       , charL '^' XOr
+      , charL '!' Bang
       , stringL "include" Include
       , fmap Id <$> lexIdent
       ]
