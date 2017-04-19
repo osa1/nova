@@ -77,7 +77,10 @@ data Stmt
         [Stmt] -- body
         [(Expr, [Stmt])] -- elseif blocks
         (Maybe [Stmt]) -- else block
+  | VarDecl Ident Type Expr
+  | Asgn Ident Expr
   | ReturnS (Maybe Expr)
+  | WhileS Expr [Stmt]
   deriving (Show)
 
 data Expr
@@ -113,6 +116,7 @@ data Binop
   | Mul
   | Div
   | Rem
+  | Gt
   deriving (Show)
 
 binopPrec :: Binop -> (Word, Word)
@@ -121,6 +125,7 @@ binopPrec Sub = (50, 60)
 binopPrec Mul = (80, 70)
 binopPrec Div = (80, 70)
 binopPrec Rem = (80, 70)
+binopPrec Gt  = (30, 40)
 
 ----------------------------------------------------------------------------------------------------
 
@@ -173,10 +178,26 @@ params = param `sepBy` token Comma
 
 stmt :: Parser Stmt
 stmt = choice
-    [ FunCallS <$> funCall
-    , ReturnS <$> (token_ Return >> optional (assertIndentation (>) >> expr))
+    [ ReturnS <$> (token_ Return >> optional (assertIndentation (>) >> expr))
+    , varDecl
     , ifStmt
+    , whileStmt
+    , do e <- expr
+         optional (token_ Assign) >>= \case
+           Nothing -> exprToStmt e
+           Just () -> do
+             lhs <- exprToLhs e
+             rhs <- expr
+             return (Asgn lhs rhs)
     ]
+
+exprToStmt :: Expr -> Parser Stmt
+exprToStmt (FunCallE f) = return (FunCallS f)
+exprToStmt e = fail ("Unexpected " ++ show e ++ " expected function call")
+
+exprToLhs :: Expr -> Parser Ident
+exprToLhs (IdentE i) = return i
+exprToLhs e = fail ("Unexpected " ++ show e ++ " expected identifier")
 
 ifStmt :: Parser Stmt
 ifStmt = do
@@ -211,6 +232,26 @@ ifStmt = do
       stmts <- many (assertIndentation (==) >> stmt)
       _ <- popIndentation
       return stmts
+
+whileStmt :: Parser Stmt
+whileStmt = do
+    token_ While
+    cond <- expr
+    token_ Colon
+    pushNextIndentation
+    stmts <- many (assertIndentation (==) >> stmt)
+    _ <- popIndentation
+    return (WhileS cond stmts)
+
+varDecl :: Parser Stmt
+varDecl = do
+    token_ Var
+    var <- ident
+    token_ Colon
+    ty <- type_
+    token_ Assign
+    rhs <- expr
+    return (VarDecl var ty rhs)
 
 funCall :: Parser FunCall
 funCall = expr >>= \case
@@ -293,6 +334,7 @@ binop = choice [ token Plus $> Add
                , token Star $> Mul
                , token Slash $> Div
                , token Percent $> Rem
+               , token RAngle $> Gt
                ]
 
 ----------------------------------------------------------------------------------------------------

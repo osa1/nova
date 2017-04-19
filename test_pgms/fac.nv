@@ -1,0 +1,16 @@
+include "stdio.h"
+
+fn fac(n: int): int =
+    var ret: int = 1
+    while n > 1:
+      ret = ret * n
+      n = n - 1
+    return ret
+
+fn main(): void =
+    printf("%d\n", fac(0))
+    printf("%d\n", fac(1))
+    printf("%d\n", fac(2))
+    printf("%d\n", fac(3))
+    printf("%d\n", fac(4))
+    printf("%d\n", fac(5))

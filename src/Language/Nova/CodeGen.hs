@@ -54,6 +54,18 @@ codegenStmt (IfS cond0 body0 elseifs else0) =
 codegenStmt (ReturnS Nothing) = [C.citem| return; |]
 codegenStmt (ReturnS (Just e)) = [C.citem| return $(codegenExpr e); |]
 
+codegenStmt (WhileS cond body) =
+    [C.citem| while ($exp:(codegenExpr cond)) {
+                  $items:(map codegenStmt body)
+              }
+            |]
+
+codegenStmt (VarDecl i ty e) =
+    [C.citem| $spec:(codegenTy ty) $id:(codegenIdent i) = $exp:(codegenExpr e); |]
+
+codegenStmt (Asgn i e) =
+    [C.citem| $id:(codegenIdent i) = $exp:(codegenExpr e); |]
+
 codegenStmts :: [Stmt] -> C.Stm
 codegenStmts stmts = C.Block (map codegenStmt stmts) noLoc
 
@@ -61,8 +73,12 @@ codegenExpr :: Expr -> C.Exp
 codegenExpr (FunCallE (FunCall e es)) = [C.cexp| $(codegenExpr e)($args:(map codegenExpr es)) |]
 codegenExpr (StringE str) = C.Const (C.StringConst [show str] "" noLoc) noLoc
 codegenExpr (IdentE i) = C.Var (codegenIdent i) noLoc
-codegenExpr (NumberE (Number num (Just num_ty))) = C.Cast (codegenNumTy num_ty) (C.AntiExp (T.unpack num) noLoc) noLoc
-codegenExpr (NumberE (Number num Nothing)) = C.AntiExp (T.unpack num) noLoc
+codegenExpr (NumberE (Number num (Just num_ty))) = C.Cast (codegenNumTy num_ty) (C.Const num_const noLoc) noLoc
+  where
+    num_const = either (flip C.toConst noLoc) (flip C.toConst noLoc) num
+codegenExpr (NumberE (Number num Nothing)) = C.Const num_const noLoc
+  where
+    num_const = either (flip C.toConst noLoc) (flip C.toConst noLoc) num
 codegenExpr (SelectE e s) = C.Member (codegenExpr e) (codegenIdent s) noLoc
 codegenExpr (IndexE e1 e2) = C.Index (codegenExpr e1) (codegenExpr e2) noLoc
 codegenExpr (Unop op e) = C.UnOp (codegenUnOp op) (codegenExpr e) noLoc
@@ -95,3 +111,4 @@ codegenBinOp op = case op of
     Mul -> C.Mul
     Div -> C.Div
     Rem -> C.Mod -- C doesn't have modulus, this is actually remainder
+    Gt  -> C.Gt

@@ -51,6 +51,8 @@ data Tok
   | Slash
   | Star
   | StringLit T.Text
+  | Var
+  | While
   | XOr
   deriving (Show, Eq, Ord)
 
@@ -65,7 +67,7 @@ instance Show a => ShowToken (Loc a) where
 unLoc :: Loc a -> a
 unLoc (L _ a _) = a
 
-data Number = Number T.Text (Maybe NumType)
+data Number = Number (Either Integer Double) (Maybe NumType)
   deriving (Show, Eq, Ord)
 
 data NumType
@@ -90,6 +92,8 @@ lexOne =
       , stringL "if" If
       , stringL "elseif" ElseIf
       , stringL "else" Else
+      , stringL "var" Var
+      , stringL "while" While
       , stringL "&&" And
       , stringL "||" Or
       -- , stringL ">>" ShiftR -- confuses template param parser
@@ -161,13 +165,13 @@ lexNumber = do
     ty  <- optional lexNumType
     p2  <- getPosition
     num <- case (ds2, ty) of
-      (Just ds2', Just F32) -> return $ Number (T.pack (ds1 ++ "." ++ ds2')) ty
-      (Just ds2', Just F64) -> return $ Number (T.pack (ds1 ++ "." ++ ds2')) ty
-      (Just ds2', Nothing ) -> return $ Number (T.pack (ds1 ++ "." ++ ds2')) ty
+      (Just ds2', Just F32) -> return $ Number (Right (read (ds1 ++ "." ++ ds2'))) ty
+      (Just ds2', Just F64) -> return $ Number (Right (read (ds1 ++ "." ++ ds2'))) ty
+      (Just ds2', Nothing ) -> return $ Number (Right (read (ds1 ++ "." ++ ds2'))) ty
       (Just _   , _       ) -> fail ("Floating point with unexpected type: " ++ show ty)
       (Nothing  , Just F32) -> fail ("Integral type with floating point type: " ++ show ty)
       (Nothing  , Just F64) -> fail ("Integral type with floating point type: " ++ show ty)
-      (Nothing  , _       ) -> return $ Number (T.pack ds1) ty
+      (Nothing  , _       ) -> return $ Number (Left (read ds1)) ty
     return (L p1 num p2)
 
 lexNumType :: Parser NumType
