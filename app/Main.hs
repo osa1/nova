@@ -1,7 +1,7 @@
 module Main where
 
 ----------------------------------------------------------------------------------------------------
-import Text.PrettyPrint
+import Text.PrettyPrint.Mainland (pretty)
 import System.FilePath
 import System.Environment (getArgs)
 ----------------------------------------------------------------------------------------------------
@@ -20,8 +20,8 @@ main = do
         putStrLn "##### Tokens #####"
         mapM_ print ts
         putStrLn "##### AST ########"
-        case P.runParser' P.parseModule ts of
+        case P.runParser' P.decls ts of
           Left err -> error (show err)
           Right decls -> do
             mapM_ print decls
-            writeFile (replaceExtension file "c") (render (CG.codegen decls))
+            writeFile (replaceExtension file "c") (pretty 100 (CG.codegen decls))
