@@ -85,17 +85,19 @@ codegenExpr (Unop op e) = C.UnOp (codegenUnOp op) (codegenExpr e) noLoc
 codegenExpr (Binop op e1 e2) = C.BinOp (codegenBinOp op) (codegenExpr e1) (codegenExpr e2) noLoc
 
 codegenNumTy :: NumType -> C.Type
-codegenNumTy t = flip C.AntiType noLoc $ case t of
-    I8  -> "int8_t"
-    I16 -> "int16_t"
-    I32 -> "int32_t"
-    I64 -> "int64_t"
-    U8  -> "uint8_t"
-    U16 -> "uint16_t"
-    U32 -> "uint32_t"
-    U64 -> "uint64_t"
-    F32 -> "float"
-    F64 -> "double"
+codegenNumTy t = C.Type (C.DeclSpec [] [] (C.Tnamed ty_str [] noLoc) noLoc) (C.DeclRoot noLoc) noLoc
+  where
+    ty_str = case t of
+      I8  -> "int8_t"
+      I16 -> "int16_t"
+      I32 -> "int32_t"
+      I64 -> "int64_t"
+      U8  -> "uint8_t"
+      U16 -> "uint16_t"
+      U32 -> "uint32_t"
+      U64 -> "uint64_t"
+      F32 -> "float"
+      F64 -> "double"
 
 codegenUnOp :: Unop -> C.UnOp
 codegenUnOp op = case op of
